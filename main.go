@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
@@ -31,6 +32,7 @@ import (
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
 
+	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +42,7 @@ import (
 // Config represents the configuration for cmd-map-ip-k8s application
 type Config struct {
 	OutputPath string `default:"OutputPath" desc:"Path to writing map of internal to extenrnal ips"`
+	NodeName   string `default:"" desc:"The name of node where application is running"`
 }
 
 func main() {
@@ -111,7 +114,19 @@ func main() {
 	go func() {
 		for i := 0; i < len(list.Items); i++ {
 			eventsCh <- watch.Event{Type: watch.Added, Object: &list.Items[i]}
+			if list.Items[i].Name == conf.NodeName {
+				n := list.Items[i]
+				for j := 0; j < len(n.Status.Addresses); j++ {
+					addr := &n.Status.Addresses[j]
+					if addr.Type == corev1.NodeInternalIP {
+						addr.Address = getPublicIP(ctx)
+						break
+					}
+				}
+				eventsCh <- watch.Event{Type: watch.Added, Object: &n}
+			}
 		}
+
 		for event := range watchClient.ResultChan() {
 			eventsCh <- event
 		}
@@ -120,4 +135,24 @@ func main() {
 	go mapWriter.Start(ctx, eventsCh)
 
 	<-ctx.Done()
+}
+
+func getPublicIP(ctx context.Context) string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		log.FromContext(ctx).Errorf("InterfaceAddrs: %v", err.Error())
+		return ""
+	}
+	for _, a := range addrs {
+		if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ip := ipnet.IP.To4(); ip != nil {
+				return ip.String()
+			}
+			if ip := ipnet.IP.To16(); ip != nil {
+				return ip.String()
+			}
+		}
+	}
+	log.FromContext(ctx).Warn("not found public ip")
+	return ""
 }
