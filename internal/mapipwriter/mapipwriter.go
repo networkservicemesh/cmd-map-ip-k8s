@@ -98,6 +98,7 @@ func (m *MapIPWriter) Start(ctx context.Context, eventCh <-chan watch.Event) {
 					delete(m.internalToExternalIP, internalIP)
 				default:
 					m.internalToExternalIP[internalIP] = externalIP
+					m.internalToExternalIP[externalIP] = internalIP
 				}
 				m.exec.AsyncExec(func() {
 					m.writeToFile(ctx)

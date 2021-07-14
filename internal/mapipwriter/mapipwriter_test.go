@@ -109,6 +109,6 @@ func Test_MapWriter(t *testing.T) {
 			return false
 		}
 		s := strings.TrimSpace(string(b))
-		return s == "127.0.0.1: 148.142.120.1"
+		return s == "127.0.0.1: 148.142.120.1\n148.142.120.1: 127.0.0.1"
 	}, time.Second, time.Millisecond*100)
 }

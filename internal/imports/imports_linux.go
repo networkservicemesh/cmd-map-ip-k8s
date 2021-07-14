@@ -19,6 +19,7 @@ import (
 	_ "k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/kubernetes/fake"
 	_ "k8s.io/client-go/rest"
+	_ "net"
 	_ "os"
 	_ "os/signal"
 	_ "path/filepath"
