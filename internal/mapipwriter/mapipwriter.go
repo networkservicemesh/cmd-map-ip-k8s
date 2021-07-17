@@ -95,10 +95,12 @@ func (m *MapIPWriter) Start(ctx context.Context, eventCh <-chan watch.Event) {
 				}
 				switch eventType {
 				case watch.Deleted:
+					log.FromContext(ctx).Debugf("deleted entry with key: %v", internalIP)
 					delete(m.internalToExternalIP, internalIP)
+
 				default:
 					m.internalToExternalIP[internalIP] = externalIP
-					m.internalToExternalIP[externalIP] = internalIP
+					log.FromContext(ctx).Debugf("added mapping %v --> %v", internalIP, externalIP)
 				}
 				m.exec.AsyncExec(func() {
 					m.writeToFile(ctx)
