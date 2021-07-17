@@ -28,14 +28,15 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/networkservicemesh/cmd-map-ip-k8s/internal/mapipwriter"
-	"github.com/networkservicemesh/sdk/pkg/tools/log"
-	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/networkservicemesh/cmd-map-ip-k8s/internal/mapipwriter"
+	"github.com/networkservicemesh/sdk/pkg/tools/log"
+	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
 )
 
 // Config represents the configuration for cmd-map-ip-k8s application
