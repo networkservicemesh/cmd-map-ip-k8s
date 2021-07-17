@@ -28,15 +28,15 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	"github.com/networkservicemesh/cmd-map-ip-k8s/internal/mapipwriter"
-	"github.com/networkservicemesh/sdk/pkg/tools/log"
-	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
-
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/networkservicemesh/cmd-map-ip-k8s/internal/mapipwriter"
+	"github.com/networkservicemesh/sdk/pkg/tools/log"
+	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
 )
 
 // Config represents the configuration for cmd-map-ip-k8s application
@@ -104,29 +104,21 @@ func main() {
 		logger.Fatal(err.Error())
 	}
 
-	var eventsCh = make(chan watch.Event, len(list.Items))
+	var eventsCh = make(chan watch.Event, len(list.Items)+1) // 1 is mapping from POD IP to External IP
+
+	eventsCh <- createPODIPMappingEvent(ctx, conf.NodeName, list.Items)
+
+	for i := 0; i < len(list.Items); i++ {
+		eventsCh <- watch.Event{Type: watch.Added, Object: &list.Items[i]}
+	}
 
 	watchClient, err := c.CoreV1().Nodes().Watch(ctx, v1.ListOptions{})
+
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
 
 	go func() {
-		for i := 0; i < len(list.Items); i++ {
-			eventsCh <- watch.Event{Type: watch.Added, Object: &list.Items[i]}
-			if list.Items[i].Name == conf.NodeName {
-				n := list.Items[i]
-				for j := 0; j < len(n.Status.Addresses); j++ {
-					addr := &n.Status.Addresses[j]
-					if addr.Type == corev1.NodeInternalIP {
-						addr.Address = getPublicIP(ctx)
-						break
-					}
-				}
-				eventsCh <- watch.Event{Type: watch.Added, Object: &n}
-			}
-		}
-
 		for event := range watchClient.ResultChan() {
 			eventsCh <- event
 		}
@@ -155,4 +147,43 @@ func getPublicIP(ctx context.Context) string {
 	}
 	log.FromContext(ctx).Warn("not found public ip")
 	return ""
+}
+
+func createPODIPMappingEvent(ctx context.Context, podNodeName string, nodes []corev1.Node) watch.Event {
+	podIP := getPublicIP(ctx)
+
+	var targetNode *corev1.Node
+
+	for i := 0; i < len(nodes); i++ {
+		if nodes[i].Name == podNodeName {
+			targetNode = &nodes[i]
+		}
+	}
+
+	if targetNode == nil {
+		return watch.Event{}
+	}
+
+	var cloneNode = *targetNode
+	var isExternalIPExist bool
+	var internalIP string
+
+	for i := 0; i < len(cloneNode.Status.Addresses); i++ {
+		if cloneNode.Status.Addresses[i].Type == corev1.NodeInternalIP {
+			internalIP = cloneNode.Status.Addresses[i].Address
+			cloneNode.Status.Addresses[i].Address = podIP
+		}
+		if cloneNode.Status.Addresses[i].Type == corev1.NodeExternalIP {
+			isExternalIPExist = true
+		}
+	}
+
+	if !isExternalIPExist {
+		cloneNode.Status.Addresses = append(cloneNode.Status.Addresses, corev1.NodeAddress{
+			Address: internalIP,
+			Type:    corev1.NodeExternalIP,
+		})
+	}
+
+	return watch.Event{Type: watch.Added, Object: &cloneNode}
 }
