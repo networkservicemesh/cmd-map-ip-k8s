@@ -41,7 +41,7 @@ import (
 
 // Config represents the configuration for cmd-map-ip-k8s application
 type Config struct {
-	OutputPath string `default:"OutputPath" desc:"Path to writing map of internal to extenrnal ips"`
+	OutputPath string `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
 	NodeName   string `default:"" desc:"The name of node where application is running"`
 }
 
@@ -106,11 +106,11 @@ func main() {
 
 	var eventsCh = make(chan watch.Event, len(list.Items)+1) // 1 is mapping from POD IP to External IP
 
-	eventsCh <- createPODIPMappingEvent(ctx, conf.NodeName, list.Items)
-
 	for i := 0; i < len(list.Items); i++ {
 		eventsCh <- watch.Event{Type: watch.Added, Object: &list.Items[i]}
 	}
+
+	eventsCh <- createPODIPMappingEvent(ctx, conf.NodeName, list.Items)
 
 	watchClient, err := c.CoreV1().Nodes().Watch(ctx, v1.ListOptions{})
 
@@ -172,9 +172,11 @@ func createPODIPMappingEvent(ctx context.Context, podNodeName string, nodes []co
 		if cloneNode.Status.Addresses[i].Type == corev1.NodeInternalIP {
 			internalIP = cloneNode.Status.Addresses[i].Address
 			cloneNode.Status.Addresses[i].Address = podIP
+			break
 		}
 		if cloneNode.Status.Addresses[i].Type == corev1.NodeExternalIP {
 			isExternalIPExist = true
+			break
 		}
 	}
 
