@@ -43,6 +43,7 @@ import (
 type Config struct {
 	OutputPath string `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
 	NodeName   string `default:"" desc:"The name of node where application is running"`
+	LogLevel   string `default:"INFO" desc:"Log level" split_words:"true"`
 }
 
 func main() {
@@ -79,6 +80,12 @@ func main() {
 	if err := envconfig.Process("nsm", conf); err != nil {
 		logger.Fatalf("error processing rootConf from env: %+v", err)
 	}
+
+	level, err := logrus.ParseLevel(conf.LogLevel)
+	if err != nil {
+		logrus.Fatalf("invalid log level %s", conf.LogLevel)
+	}
+	logrus.SetLevel(level)
 
 	// ********************************************************************************
 	// Create client-go
