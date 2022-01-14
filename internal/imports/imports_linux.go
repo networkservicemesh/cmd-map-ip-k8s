@@ -8,6 +8,7 @@ import (
 	_ "github.com/kelseyhightower/envconfig"
 	_ "github.com/networkservicemesh/sdk/pkg/tools/log"
 	_ "github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
+	_ "github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 	_ "github.com/sirupsen/logrus"
 	_ "github.com/stretchr/testify/require"
 	_ "go.uber.org/goleak"
