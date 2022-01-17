@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Doc.ai and/or its affiliates.
+// Copyright (c) 2021-2022 Doc.ai and/or its affiliates.
 //
 // SPDX-License-Identifier: Apache-2.0
 //
@@ -37,13 +37,15 @@ import (
 	"github.com/networkservicemesh/cmd-map-ip-k8s/internal/mapipwriter"
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 	"github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
+	"github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
 )
 
 // Config represents the configuration for cmd-map-ip-k8s application
 type Config struct {
-	OutputPath string `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
-	NodeName   string `default:"" desc:"The name of node where application is running"`
-	LogLevel   string `default:"INFO" desc:"Log level" split_words:"true"`
+	OutputPath            string `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
+	NodeName              string `default:"" desc:"The name of node where application is running"`
+	LogLevel              string `default:"INFO" desc:"Log level" split_words:"true"`
+	OpenTelemetryEndpoint string `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
 }
 
 func main() {
@@ -63,10 +65,10 @@ func main() {
 	// ********************************************************************************
 	// Setup logger
 	// ********************************************************************************
+	log.EnableTracing(true)
 	logrus.Info("Starting NetworkServiceMesh Client ...")
 	logrus.SetFormatter(&nested.Formatter{})
-	ctx = log.WithFields(ctx, map[string]interface{}{"cmd": os.Args[:1]})
-	ctx = log.WithLog(ctx, logruslogger.New(ctx))
+	ctx = log.WithLog(ctx, logruslogger.New(ctx, map[string]interface{}{"cmd": os.Args[:1]}))
 
 	logger := log.FromContext(ctx)
 
@@ -86,6 +88,21 @@ func main() {
 		logrus.Fatalf("invalid log level %s", conf.LogLevel)
 	}
 	logrus.SetLevel(level)
+
+	// ********************************************************************************
+	// Configure Open Telemetry
+	// ********************************************************************************
+	if opentelemetry.IsEnabled() {
+		collectorAddress := conf.OpenTelemetryEndpoint
+		spanExporter := opentelemetry.InitSpanExporter(ctx, collectorAddress)
+		metricExporter := opentelemetry.InitMetricExporter(ctx, collectorAddress)
+		o := opentelemetry.Init(ctx, spanExporter, metricExporter, "map-ip-k8s")
+		defer func() {
+			if err = o.Close(); err != nil {
+				logger.Error(err.Error())
+			}
+		}()
+	}
 
 	// ********************************************************************************
 	// Create client-go
