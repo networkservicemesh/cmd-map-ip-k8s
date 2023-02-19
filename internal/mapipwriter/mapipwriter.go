@@ -1,5 +1,7 @@
 // Copyright (c) 2021 Doc.ai and/or its affiliates.
 //
+// Copyright (c) 2023 Cisco goimports -w -local github.com/networkservicemesh and/or its affiliates.
+//
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,36 +21,64 @@ package mapipwriter
 
 import (
 	"context"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/edwarnicke/serialize"
 	"gopkg.in/yaml.v2"
-	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/watch"
 
 	"github.com/networkservicemesh/sdk/pkg/tools/log"
 )
 
+// Translation represents translation of ip addrses
+type Translation struct {
+	From, To string
+}
+
+// Event represents event for the mapipwriter
+type Event struct {
+	Translation
+	Type watch.EventType
+}
+
+func (e *Translation) String() string {
+	return fmt.Sprintf("%v->%v", e.From, e.To)
+}
+
+// Reverse creates a new Translation with swapped From/To fields
+func (e *Translation) Reverse() Translation {
+	return Translation{
+		From: e.To,
+		To:   e.From,
+	}
+}
+
 // MapIPWriter writes IPs from the v1.Node into OutputPath
 type MapIPWriter struct {
 	OutputPath           string
 	exec                 serialize.Executor
-	internalToExternalIP map[string]string
+	internalToExternalIP map[Translation]struct{} //TODO: use orderedmap
 }
 
 func (m *MapIPWriter) writeToFile(ctx context.Context) {
 	_ = os.MkdirAll(filepath.Dir(m.OutputPath), os.ModePerm)
 
-	bytes, err := yaml.Marshal(m.internalToExternalIP)
+	var outmap = make(map[string]string)
+
+	for translation := range m.internalToExternalIP {
+		outmap[translation.From] = translation.To
+	}
+
+	bytes, err := yaml.Marshal(outmap)
 
 	if err != nil {
 		log.FromContext(ctx).Errorf("an error during marshaling ips map: %v, err: %v", m.OutputPath, err.Error())
 		return
 	}
 
-	err = ioutil.WriteFile(m.OutputPath, bytes, os.ModePerm)
+	err = os.WriteFile(m.OutputPath, bytes, os.ModePerm)
 
 	if err != nil {
 		log.FromContext(ctx).Errorf("an error during marshaling ips map: %v, err: %v", m.OutputPath, err.Error())
@@ -56,7 +86,7 @@ func (m *MapIPWriter) writeToFile(ctx context.Context) {
 }
 
 // Start starts reading events from the passed channel in the current goroutine
-func (m *MapIPWriter) Start(ctx context.Context, eventCh <-chan watch.Event) {
+func (m *MapIPWriter) Start(ctx context.Context, eventCh <-chan Event) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -65,42 +95,18 @@ func (m *MapIPWriter) Start(ctx context.Context, eventCh <-chan watch.Event) {
 			if !ok {
 				continue
 			}
-			node, ok := event.Object.(*v1.Node)
-			if !ok {
-				continue
-			}
-			if node == nil {
-				continue
-			}
-
-			internalIP, externalIP := getAddress(node.Status.Addresses, v1.NodeInternalIP), getAddress(node.Status.Addresses, v1.NodeExternalIP)
-
-			if internalIP == "" && externalIP == "" {
-				continue
-			}
-
-			if internalIP == "" {
-				internalIP = externalIP
-			}
-
-			if externalIP == "" {
-				externalIP = internalIP
-			}
-
-			eventType := event.Type
-
 			m.exec.AsyncExec(func() {
 				if m.internalToExternalIP == nil {
-					m.internalToExternalIP = map[string]string{}
+					m.internalToExternalIP = make(map[Translation]struct{})
 				}
-				switch eventType {
+				switch event.Type {
 				case watch.Deleted:
-					log.FromContext(ctx).Debugf("deleted entry with key: %v", internalIP)
-					delete(m.internalToExternalIP, internalIP)
+					log.FromContext(ctx).Debugf("deleted entry: %v", event.String())
+					delete(m.internalToExternalIP, event.Translation)
 
 				default:
-					m.internalToExternalIP[internalIP] = externalIP
-					log.FromContext(ctx).Debugf("added mapping %v --> %v", internalIP, externalIP)
+					m.internalToExternalIP[event.Translation] = struct{}{}
+					log.FromContext(ctx).Debugf("added entry: %v", event.String())
 				}
 				m.exec.AsyncExec(func() {
 					m.writeToFile(ctx)
@@ -108,15 +114,4 @@ func (m *MapIPWriter) Start(ctx context.Context, eventCh <-chan watch.Event) {
 			})
 		}
 	}
-}
-
-func getAddress(addresses []v1.NodeAddress, addressType v1.NodeAddressType) string {
-	for i := 0; i < len(addresses); i++ {
-		addr := &addresses[i]
-		if addr.Type == addressType {
-			return addr.Address
-		}
-	}
-
-	return ""
 }
