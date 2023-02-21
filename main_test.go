@@ -44,6 +44,7 @@ func Test_NodeHasChanged(t *testing.T) {
 
 	var conf = &mainpkg.Config{
 		OutputPath: filepath.Join(t.TempDir(), "output.yaml"),
+		NodeName:   "node-1",
 	}
 
 	var client = fake.NewSimpleClientset()
