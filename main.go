@@ -184,7 +184,16 @@ func Start(ctx context.Context, conf *Config, c kubernetes.Interface) <-chan str
 	go monitorEvents(ctx, eventsCh, func() watch.Interface {
 		r, _ := c.CoreV1().Nodes().Watch(ctx, v1.ListOptions{})
 		return r
-	}, translationFromNode)
+	}, func(e watch.Event) []mapipwriter.Event {
+		var result = translationFromNode(e)
+		var podEvent = translationFromPodToNode(ctx, e, conf.NodeName)
+
+		if podEvent != nil {
+			result = append(result, *podEvent)
+		}
+
+		return result
+	})
 
 	if conf.FromConfigMap != "" {
 		go monitorEvents(ctx, eventsCh, func() watch.Interface {
@@ -241,8 +250,36 @@ func translateFromConfigmap(e watch.Event) []mapipwriter.Event {
 	return res
 }
 
+func translationFromPodToNode(ctx context.Context, e watch.Event, currentNodeName string) *mapipwriter.Event {
+	var node = e.Object.(*corev1.Node)
+
+	if node.Name != currentNodeName || e.Type == watch.Deleted {
+		return nil
+	}
+
+	var result = &mapipwriter.Event{
+		Type: watch.Added,
+		Translation: mapipwriter.Translation{
+			From: getPublicIP(ctx),
+		},
+	}
+	for i := 0; i < len(node.Status.Addresses); i++ {
+		if node.Status.Addresses[i].Type == corev1.NodeInternalIP {
+			result.To = node.Status.Addresses[i].Address
+		}
+	}
+	for i := 0; i < len(node.Status.Addresses); i++ {
+		if node.Status.Addresses[i].Type == corev1.NodeExternalIP {
+			result.To = node.Status.Addresses[i].Address
+		}
+	}
+
+	return result
+}
+
 func translationFromNode(e watch.Event) []mapipwriter.Event {
 	var result []mapipwriter.Event
+
 	var node = e.Object.(*corev1.Node)
 
 	for i := 0; i < len(node.Status.Addresses); i++ {
@@ -271,16 +308,6 @@ func translationFromNode(e watch.Event) []mapipwriter.Event {
 			}
 			break
 		}
-	}
-
-	if len(result) > 0 && e.Type == watch.Added {
-		result = append(result, mapipwriter.Event{
-			Type: watch.Added,
-			Translation: mapipwriter.Translation{
-				From: getPublicIP(context.Background()),
-				To:   result[len(result)-1].From,
-			},
-		})
 	}
 
 	return result
