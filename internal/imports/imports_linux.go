@@ -3,6 +3,7 @@ package imports
 
 import (
 	_ "context"
+	_ "fmt"
 	_ "github.com/antonfisher/nested-logrus-formatter"
 	_ "github.com/edwarnicke/serialize"
 	_ "github.com/kelseyhightower/envconfig"
@@ -13,13 +14,13 @@ import (
 	_ "github.com/stretchr/testify/require"
 	_ "go.uber.org/goleak"
 	_ "gopkg.in/yaml.v2"
-	_ "io/ioutil"
 	_ "k8s.io/api/core/v1"
 	_ "k8s.io/apimachinery/pkg/apis/meta/v1"
 	_ "k8s.io/apimachinery/pkg/watch"
 	_ "k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/kubernetes/fake"
 	_ "k8s.io/client-go/rest"
+	_ "k8s.io/client-go/testing"
 	_ "net"
 	_ "os"
 	_ "os/signal"

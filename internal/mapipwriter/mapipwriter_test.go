@@ -1,5 +1,7 @@
 // Copyright (c) 2021 Doc.ai and/or its affiliates.
 //
+// Copyright (c) 2023 Cisco and/or its affiliates.
+//
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +20,8 @@ package mapipwriter_test
 
 import (
 	"context"
-	"io/ioutil"
+	"os"
+
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,9 +29,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
-	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/apimachinery/pkg/watch"
 
 	"github.com/networkservicemesh/cmd-map-ip-k8s/internal/mapipwriter"
 )
@@ -45,53 +46,29 @@ func Test_MapWriter(t *testing.T) {
 		OutputPath: outputFile,
 	}
 
-	cleintset := fake.NewSimpleClientset()
+	var eventCh = make(chan mapipwriter.Event)
 
-	w, err := cleintset.CoreV1().Nodes().Watch(ctx, metav1.ListOptions{})
-	require.NoError(t, err)
+	go writer.Start(ctx, eventCh)
 
-	defer w.Stop()
-
-	go writer.Start(ctx, w.ResultChan())
-
-	_, err = cleintset.CoreV1().Nodes().Create(ctx, &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "node-controlplane",
+	eventCh <- mapipwriter.Event{
+		Type: watch.Added,
+		Translation: mapipwriter.Translation{
+			From: "127.0.0.1",
+			To:   "148.142.120.1",
 		},
-		Status: v1.NodeStatus{
+	}
 
-			Addresses: []v1.NodeAddress{
-				{
-					Type:    v1.NodeExternalIP,
-					Address: "148.142.120.1",
-				},
-				{
-					Type:    v1.NodeInternalIP,
-					Address: "127.0.0.1",
-				},
-			},
+	eventCh <- mapipwriter.Event{
+		Type: watch.Added,
+		Translation: mapipwriter.Translation{
+			From: "1.1.1.1",
+			To:   "1.1.1.1",
 		},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	_, err = cleintset.CoreV1().Nodes().Create(ctx, &v1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "node-worker-1",
-		},
-		Status: v1.NodeStatus{
-			Addresses: []v1.NodeAddress{
-				{
-					Type:    v1.NodeInternalIP,
-					Address: "1.1.1.1",
-				},
-			},
-		},
-	}, metav1.CreateOptions{})
-	require.NoError(t, err)
+	}
 
 	require.Eventually(t, func() bool {
 		// #nosec
-		b, readErr := ioutil.ReadFile(outputFile)
+		b, readErr := os.ReadFile(outputFile)
 		if readErr != nil {
 			return false
 		}
@@ -99,12 +76,17 @@ func Test_MapWriter(t *testing.T) {
 		return strings.Contains(s, "127.0.0.1: 148.142.120.1") && strings.Contains(s, "1.1.1.1: 1.1.1.1")
 	}, time.Second, time.Millisecond*100)
 
-	err = cleintset.CoreV1().Nodes().Delete(ctx, "node-worker-1", metav1.DeleteOptions{})
-	require.NoError(t, err)
+	eventCh <- mapipwriter.Event{
+		Type: watch.Deleted,
+		Translation: mapipwriter.Translation{
+			From: "1.1.1.1",
+			To:   "1.1.1.1",
+		},
+	}
 
 	require.Eventually(t, func() bool {
 		// #nosec
-		b, readErr := ioutil.ReadFile(outputFile)
+		b, readErr := os.ReadFile(outputFile)
 		if readErr != nil {
 			return false
 		}

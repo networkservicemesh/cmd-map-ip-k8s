@@ -1,5 +1,7 @@
 // Copyright (c) 2021-2022 Doc.ai and/or its affiliates.
 //
+// Copyright (c) 2023 Cisco and/or its affiliates.
+//
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,9 +24,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	nested "github.com/antonfisher/nested-logrus-formatter"
 	"github.com/kelseyhightower/envconfig"
+	"gopkg.in/yaml.v2"
 
 	"github.com/sirupsen/logrus"
 
@@ -45,6 +49,8 @@ type Config struct {
 	OutputPath            string `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
 	NodeName              string `default:"" desc:"The name of node where application is running"`
 	LogLevel              string `default:"INFO" desc:"Log level" split_words:"true"`
+	Namespace             string `default:"default" desc:"Namespace where is mapip running" split_words:"true"`
+	FromConfigMap         string `default:"" desc:"If it's not empty then gets entries from the configmap" split_words:"true"`
 	OpenTelemetryEndpoint string `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
 }
 
@@ -116,41 +122,7 @@ func main() {
 		logger.Fatal(err.Error())
 	}
 
-	// ********************************************************************************
-	// Initialize goroutines for writing ips map
-	// ********************************************************************************
-	var mapWriter = mapipwriter.MapIPWriter{
-		OutputPath: conf.OutputPath,
-	}
-
-	list, err := c.CoreV1().Nodes().List(context.Background(), v1.ListOptions{})
-	if err != nil {
-		logger.Fatal(err.Error())
-	}
-
-	var eventsCh = make(chan watch.Event, len(list.Items)+1) // 1 is mapping from POD IP to External IP
-
-	for i := 0; i < len(list.Items); i++ {
-		eventsCh <- watch.Event{Type: watch.Added, Object: &list.Items[i]}
-	}
-
-	eventsCh <- createPODIPMappingEvent(ctx, conf.NodeName, list.Items)
-
-	watchClient, err := c.CoreV1().Nodes().Watch(ctx, v1.ListOptions{})
-
-	if err != nil {
-		logger.Fatal(err.Error())
-	}
-
-	go func() {
-		for event := range watchClient.ResultChan() {
-			eventsCh <- event
-		}
-	}()
-
-	go mapWriter.Start(ctx, eventsCh)
-
-	<-ctx.Done()
+	<-Start(ctx, conf, c)
 }
 
 func getPublicIP(ctx context.Context) string {
@@ -173,43 +145,143 @@ func getPublicIP(ctx context.Context) string {
 	return ""
 }
 
-func createPODIPMappingEvent(ctx context.Context, podNodeName string, nodes []corev1.Node) watch.Event {
-	podIP := getPublicIP(ctx)
+// Start starts main application
+func Start(ctx context.Context, conf *Config, c kubernetes.Interface) <-chan struct{} {
+	logger := log.FromContext(ctx)
 
-	var targetNode *corev1.Node
+	var mapWriter = mapipwriter.MapIPWriter{
+		OutputPath: conf.OutputPath,
+	}
 
-	for i := 0; i < len(nodes); i++ {
-		if nodes[i].Name == podNodeName {
-			targetNode = &nodes[i]
+	list, err := c.CoreV1().Nodes().List(ctx, v1.ListOptions{})
+	if err != nil {
+		logger.Fatal(err.Error())
+	}
+
+	var eventsCh = make(chan mapipwriter.Event, 64)
+
+	cm, err := c.CoreV1().ConfigMaps(conf.Namespace).Get(ctx, conf.FromConfigMap, v1.GetOptions{})
+	if err == nil {
+		for _, event := range translateFromConfigmap(watch.Event{
+			Type:   watch.Added,
+			Object: cm,
+		}) {
+			eventsCh <- event
 		}
 	}
 
-	if targetNode == nil {
-		return watch.Event{}
+	for i := 0; i < len(list.Items); i++ {
+		for _, event := range translationFromNode(watch.Event{
+			Type:   watch.Added,
+			Object: &list.Items[i],
+		}) {
+			eventsCh <- event
+		}
 	}
 
-	var cloneNode = *targetNode
-	var isExternalIPExist bool
-	var internalIP string
+	go mapWriter.Start(ctx, eventsCh)
 
-	for i := 0; i < len(cloneNode.Status.Addresses); i++ {
-		if cloneNode.Status.Addresses[i].Type == corev1.NodeInternalIP {
-			internalIP = cloneNode.Status.Addresses[i].Address
-			cloneNode.Status.Addresses[i].Address = podIP
+	go monitorEvents(ctx, eventsCh, func() watch.Interface {
+		r, _ := c.CoreV1().Nodes().Watch(ctx, v1.ListOptions{})
+		return r
+	}, translationFromNode)
+
+	if conf.FromConfigMap != "" {
+		go monitorEvents(ctx, eventsCh, func() watch.Interface {
+			r, _ := c.CoreV1().ConfigMaps(conf.FromConfigMap).Watch(ctx, v1.ListOptions{FieldSelector: "meta.name=" + conf.FromConfigMap})
+			return r
+		}, translateFromConfigmap)
+	}
+	return ctx.Done()
+}
+
+func monitorEvents(ctx context.Context, out chan<- mapipwriter.Event, getWatchFn func() watch.Interface, translateFn func(watch.Event) []mapipwriter.Event) {
+	for ctx.Err() == nil {
+		w := getWatchFn()
+
+		if w == nil {
+			log.FromContext(ctx).Errorf("cant supply watcher")
+			time.Sleep(time.Second / 2)
+			continue
+		}
+		select {
+		case e, ok := <-w.ResultChan():
+			if !ok {
+				continue
+			}
+			events := translateFn(e)
+			for _, event := range events {
+				out <- event
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func translateFromConfigmap(e watch.Event) []mapipwriter.Event {
+	var res []mapipwriter.Event
+	var c = e.Object.(*corev1.ConfigMap)
+
+	for _, v := range c.Data {
+		var m map[string]string
+		if err := yaml.Unmarshal([]byte(v), &m); err == nil {
+			for from, to := range m {
+				res = append(res, mapipwriter.Event{
+					Type: e.Type,
+					Translation: mapipwriter.Translation{
+						From: from,
+						To:   to,
+					},
+				})
+			}
+		}
+	}
+
+	return res
+}
+
+func translationFromNode(e watch.Event) []mapipwriter.Event {
+	var result []mapipwriter.Event
+	var node = e.Object.(*corev1.Node)
+
+	for i := 0; i < len(node.Status.Addresses); i++ {
+		if node.Status.Addresses[i].Type == corev1.NodeInternalIP {
+			result = append(result, mapipwriter.Event{
+				Type: e.Type,
+				Translation: mapipwriter.Translation{
+					From: node.Status.Addresses[i].Address,
+					To:   node.Status.Addresses[i].Address,
+				},
+			})
+
+			result[0].To = node.Status.Addresses[i].Address
+		}
+	}
+
+	for i := 0; i < len(node.Status.Addresses); i++ {
+		if node.Status.Addresses[i].Type == corev1.NodeExternalIP {
+			var l = len(result)
+			for j := 0; j < l; j++ {
+				result[j].To = node.Status.Addresses[i].Address
+				result = append(result, mapipwriter.Event{
+					Type:        e.Type,
+					Translation: result[j].Reverse(),
+				})
+			}
 			break
 		}
-		if cloneNode.Status.Addresses[i].Type == corev1.NodeExternalIP {
-			isExternalIPExist = true
-			break
-		}
 	}
 
-	if !isExternalIPExist {
-		cloneNode.Status.Addresses = append(cloneNode.Status.Addresses, corev1.NodeAddress{
-			Address: internalIP,
-			Type:    corev1.NodeExternalIP,
+	if len(result) > 0 && e.Type == watch.Added {
+		result = append(result, mapipwriter.Event{
+			Type: watch.Added,
+			Translation: mapipwriter.Translation{
+				From: getPublicIP(context.Background()),
+				To:   result[len(result)-1].From,
+			},
 		})
 	}
 
-	return watch.Event{Type: watch.Added, Object: &cloneNode}
+	return result
 }
