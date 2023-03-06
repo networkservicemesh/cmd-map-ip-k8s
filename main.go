@@ -160,13 +160,15 @@ func Start(ctx context.Context, conf *Config, c kubernetes.Interface) <-chan str
 
 	var eventsCh = make(chan mapipwriter.Event, 64)
 
-	cm, err := c.CoreV1().ConfigMaps(conf.Namespace).Get(ctx, conf.FromConfigMap, v1.GetOptions{})
-	if err == nil {
-		for _, event := range translateFromConfigmap(watch.Event{
-			Type:   watch.Added,
-			Object: cm,
-		}) {
-			eventsCh <- event
+	if conf.FromConfigMap != "" {
+		cm, err := c.CoreV1().ConfigMaps(conf.Namespace).Get(ctx, conf.FromConfigMap, v1.GetOptions{})
+		if err == nil {
+			for _, event := range translateFromConfigmap(watch.Event{
+				Type:   watch.Added,
+				Object: cm,
+			}) {
+				eventsCh <- event
+			}
 		}
 	}
 
@@ -205,17 +207,25 @@ func Start(ctx context.Context, conf *Config, c kubernetes.Interface) <-chan str
 }
 
 func monitorEvents(ctx context.Context, out chan<- mapipwriter.Event, getWatchFn func() watch.Interface, translateFn func(watch.Event) []mapipwriter.Event) {
-	for ctx.Err() == nil {
-		w := getWatchFn()
+	w := getWatchFn()
+	defer func() {
+		if w != nil {
+			w.Stop()
+		}
+	}()
 
+	for ctx.Err() == nil {
 		if w == nil {
 			log.FromContext(ctx).Errorf("cant supply watcher")
 			time.Sleep(time.Second / 2)
 			continue
 		}
+
 		select {
 		case e, ok := <-w.ResultChan():
 			if !ok {
+				w.Stop()
+				w = getWatchFn()
 				continue
 			}
 			events := translateFn(e)
