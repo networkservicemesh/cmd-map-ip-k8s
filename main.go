@@ -218,6 +218,7 @@ func monitorEvents(ctx context.Context, out chan<- mapipwriter.Event, getWatchFn
 		if w == nil {
 			log.FromContext(ctx).Errorf("cant supply watcher")
 			time.Sleep(time.Second / 2)
+			w = getWatchFn()
 			continue
 		}
 
