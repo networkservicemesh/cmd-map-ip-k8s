@@ -46,12 +46,13 @@ import (
 
 // Config represents the configuration for cmd-map-ip-k8s application
 type Config struct {
-	OutputPath            string `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
-	NodeName              string `default:"" desc:"The name of node where application is running"`
-	LogLevel              string `default:"INFO" desc:"Log level" split_words:"true"`
-	Namespace             string `default:"default" desc:"Namespace where is mapip running" split_words:"true"`
-	FromConfigMap         string `default:"" desc:"If it's not empty then gets entries from the configmap" split_words:"true"`
-	OpenTelemetryEndpoint string `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
+	OutputPath            string        `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
+	NodeName              string        `default:"" desc:"The name of node where application is running"`
+	LogLevel              string        `default:"INFO" desc:"Log level" split_words:"true"`
+	Namespace             string        `default:"default" desc:"Namespace where is mapip running" split_words:"true"`
+	FromConfigMap         string        `default:"" desc:"If it's not empty then gets entries from the configmap" split_words:"true"`
+	OpenTelemetryEndpoint string        `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
+	MetricsExportInterval time.Duration `default:"10s" desc:"interval between mertics exports" split_words:"true"`
 }
 
 func main() {
@@ -101,7 +102,7 @@ func main() {
 	if opentelemetry.IsEnabled() {
 		collectorAddress := conf.OpenTelemetryEndpoint
 		spanExporter := opentelemetry.InitSpanExporter(ctx, collectorAddress)
-		metricExporter := opentelemetry.InitMetricExporter(ctx, collectorAddress)
+		metricExporter := opentelemetry.InitOPTLMetricExporter(ctx, collectorAddress, conf.MetricsExportInterval)
 		o := opentelemetry.Init(ctx, spanExporter, metricExporter, "map-ip-k8s")
 		defer func() {
 			if err = o.Close(); err != nil {
