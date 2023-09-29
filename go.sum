@@ -179,8 +179,8 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/munnerz/goautoneg v0.0.0-20120707110453-a547fc61f48d/go.mod h1:+n7T8mK8HuQTcFwEeznm/DIxMOiR9yIdICNftLE1DvQ=
 github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f/go.mod h1:ZdcZmHo+o7JKHSa8/e818NopupXU1YMK5fe1lsApnBw=
-github.com/networkservicemesh/sdk v0.5.1-0.20230928095228-256d2ccfaf72 h1:kHxDNU5ePuHH7MZceMc1G3dAZueUk1gSu3Rb5fhvFf4=
-github.com/networkservicemesh/sdk v0.5.1-0.20230928095228-256d2ccfaf72/go.mod h1:KzbOZkk84r6KMNESKb50DpIWqxqCA88Mb+2jFrAdBJs=
+github.com/networkservicemesh/sdk v1.11.0-rc.1 h1:zLzS9YoxPmy1qou/BDT8HR0ZMAPQ07+4rdCeXLq60XA=
+github.com/networkservicemesh/sdk v1.11.0-rc.1/go.mod h1:xzeQAY+C+h/wtI+TM8zyK2aqrFrTMb4t6NLbboKaAYs=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/onsi/ginkgo v0.0.0-20170829012221-11459a886d9c/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
