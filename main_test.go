@@ -51,39 +51,41 @@ func Test_NodeHasChanged(t *testing.T) {
 	watcher := watch.NewFake()
 	client.PrependWatchReactor("nodes", k8stest.DefaultWatchReactor(watcher, nil))
 
+	nodes := map[string]string{
+		"1.1.1.1": "2.1.1.1",
+		"1.1.1.2": "2.1.1.2",
+		"1.1.1.3": "2.1.1.3",
+	}
+
 	var appCh = mainpkg.Start(ctx, conf, client)
 	go func() {
 		defer watcher.Stop()
 		time.Sleep(time.Millisecond * 30)
-		watcher.Add(&v1.Node{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "node-1",
-			},
-			Status: v1.NodeStatus{
-				Addresses: []v1.NodeAddress{
-					{
-						Type:    v1.NodeExternalIP,
-						Address: "1.1.1.1",
-					},
-					{
-						Type:    v1.NodeInternalIP,
-						Address: "2.2.2.2",
+		for k, v := range nodes {
+			watcher.Add(&v1.Node{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "node-" + k,
+				},
+				Status: v1.NodeStatus{
+					Addresses: []v1.NodeAddress{
+						{
+							Type:    v1.NodeInternalIP,
+							Address: k,
+						},
+						{
+							Type:    v1.NodeExternalIP,
+							Address: v,
+						},
 					},
 				},
-			},
-		})
+			})
+		}
 	}()
 
 	require.Len(t, appCh, 0)
 
 	require.Eventually(t, func() bool {
-		return verifyIPmap(
-			conf.OutputPath,
-			map[string]string{
-				"1.1.1.1": "2.2.2.2",
-				"2.2.2.2": "1.1.1.1",
-			},
-		)
+		return verifyIPmap(conf.OutputPath, nodes, true)
 	}, time.Second*2, time.Second/10)
 }
 
@@ -106,7 +108,7 @@ func Test_ConfigMapLoadedFromStart(t *testing.T) {
 			Namespace: "nsm",
 		},
 		Data: map[string]string{
-			"config.yaml": "1.1.1.1: 2.2.2.2\n2.2.2.2: 1.1.1.1",
+			"config.yaml": "1.1.1.1: 2.1.1.1\n1.1.1.2: 2.1.1.2",
 		},
 	}, metav1.CreateOptions{})
 	require.NoError(t, err)
@@ -119,9 +121,10 @@ func Test_ConfigMapLoadedFromStart(t *testing.T) {
 		return verifyIPmap(
 			conf.OutputPath,
 			map[string]string{
-				"1.1.1.1": "2.2.2.2",
-				"2.2.2.2": "1.1.1.1",
+				"1.1.1.1": "2.1.1.1",
+				"1.1.1.2": "2.1.1.2",
 			},
+			false,
 		)
 	}, time.Second*2, time.Second/10)
 }
@@ -151,7 +154,7 @@ func Test_ConfigMapHasChanged(t *testing.T) {
 				Name: "test",
 			},
 			Data: map[string]string{
-				"config.yaml": "1.1.1.1: 2.2.2.2\n2.2.2.2: 1.1.1.1",
+				"config.yaml": "1.1.1.1: 2.1.1.1\n1.1.1.2: 2.1.1.2",
 			},
 		})
 	}()
@@ -162,14 +165,15 @@ func Test_ConfigMapHasChanged(t *testing.T) {
 		return verifyIPmap(
 			conf.OutputPath,
 			map[string]string{
-				"1.1.1.1": "2.2.2.2",
-				"2.2.2.2": "1.1.1.1",
+				"1.1.1.1": "2.1.1.1",
+				"1.1.1.2": "2.1.1.2",
 			},
+			false,
 		)
 	}, time.Second*2, time.Second/10)
 }
 
-func verifyIPmap(p string, expected map[string]string) bool {
+func verifyIPmap(p string, expected map[string]string, checkTargetMapping bool) bool {
 	// #nosec
 	b, err := os.ReadFile(p)
 
@@ -188,6 +192,12 @@ func verifyIPmap(p string, expected map[string]string) bool {
 	for k, v := range expected {
 		if m[k] != v {
 			return false
+		}
+		if checkTargetMapping {
+			// check that target values are mapped on themselves
+			if m[v] != v {
+				return false
+			}
 		}
 	}
 
