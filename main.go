@@ -294,6 +294,7 @@ func translationFromNode(e watch.Event) []mapipwriter.Event {
 
 	var node = e.Object.(*corev1.Node)
 
+	// map internal ip on itself, in case we don't have an external IP
 	for i := 0; i < len(node.Status.Addresses); i++ {
 		if node.Status.Addresses[i].Type == corev1.NodeInternalIP {
 			result = append(result, mapipwriter.Event{
@@ -308,17 +309,26 @@ func translationFromNode(e watch.Event) []mapipwriter.Event {
 		}
 	}
 
+	// if we have external IPs, instead map internal IP to external
 	for i := 0; i < len(node.Status.Addresses); i++ {
 		if node.Status.Addresses[i].Type == corev1.NodeExternalIP {
-			var l = len(result)
-			for j := 0; j < l; j++ {
+			for j := 0; j < len(result); j++ {
 				result[j].To = node.Status.Addresses[i].Address
-				result = append(result, mapipwriter.Event{
-					Type:        e.Type,
-					Translation: result[j].Reverse(),
-				})
 			}
 			break
+		}
+	}
+
+	// map external IP to itself, in case we want to send data from external IP
+	for i := 0; i < len(node.Status.Addresses); i++ {
+		if node.Status.Addresses[i].Type == corev1.NodeExternalIP {
+			result = append(result, mapipwriter.Event{
+				Type: e.Type,
+				Translation: mapipwriter.Translation{
+					From: node.Status.Addresses[i].Address,
+					To:   node.Status.Addresses[i].Address,
+				},
+			})
 		}
 	}
 
