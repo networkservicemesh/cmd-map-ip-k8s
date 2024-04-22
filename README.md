@@ -16,6 +16,18 @@ You can build the docker container by running:
 docker build .
 ```
 
+# Usage
+
+## Environment config
+
+* `NSM_OUTPUT_PATH`             - Path to writing map of internal to extenrnal ips
+* `NSM_NODE_NAME`               - The name of node where application is running
+* `NSM_LOG_LEVEL`               - Log level
+* `NSM_NAMESPACE`               - Namespace where is mapip running
+* `NSM_FROM_CONFIG_MAP`         - If it's not empty then gets entries from the configmap
+* `NSM_OPEN_TELEMETRY_ENDPOINT` - OpenTelemetry Collector Endpoint
+* `NSM_METRICS_EXPORT_INTERVAL` - interval between mertics exports
+
 # Testing
 
 ## Testing Docker container
