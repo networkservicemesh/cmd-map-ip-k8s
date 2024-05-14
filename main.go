@@ -2,6 +2,8 @@
 //
 // Copyright (c) 2023 Cisco and/or its affiliates.
 //
+// Copyright (c) 2024 OpenInfra Foundation Europe. All rights reserved.
+//
 // SPDX-License-Identifier: Apache-2.0
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,12 +48,12 @@ import (
 
 // Config represents the configuration for cmd-map-ip-k8s application
 type Config struct {
-	OutputPath            string        `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips"`
-	NodeName              string        `default:"" desc:"The name of node where application is running"`
+	OutputPath            string        `default:"external_ips.yaml" desc:"Path to writing map of internal to extenrnal ips" split_words:"true"`
+	NodeName              string        `default:"" desc:"The name of node where application is running" split_words:"true"`
 	LogLevel              string        `default:"INFO" desc:"Log level" split_words:"true"`
 	Namespace             string        `default:"default" desc:"Namespace where is mapip running" split_words:"true"`
 	FromConfigMap         string        `default:"" desc:"If it's not empty then gets entries from the configmap" split_words:"true"`
-	OpenTelemetryEndpoint string        `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint"`
+	OpenTelemetryEndpoint string        `default:"otel-collector.observability.svc.cluster.local:4317" desc:"OpenTelemetry Collector Endpoint" split_words:"true"`
 	MetricsExportInterval time.Duration `default:"10s" desc:"interval between mertics exports" split_words:"true"`
 }
 
