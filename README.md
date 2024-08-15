@@ -27,6 +27,8 @@ docker build .
 * `NSM_FROM_CONFIG_MAP`         - If it's not empty then gets entries from the configmap
 * `NSM_OPEN_TELEMETRY_ENDPOINT` - OpenTelemetry Collector Endpoint
 * `NSM_METRICS_EXPORT_INTERVAL` - interval between mertics exports
+* `NSM_PPROF_ENABLED`           - is pprof enabled (default: "false")
+* `NSM_PPROF_LISTEN_ON`         - pprof URL to ListenAndServe (default: "localhost:6060")
 
 # Testing
 
