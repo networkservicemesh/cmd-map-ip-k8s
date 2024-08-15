@@ -10,6 +10,7 @@ import (
 	_ "github.com/networkservicemesh/sdk/pkg/tools/log"
 	_ "github.com/networkservicemesh/sdk/pkg/tools/log/logruslogger"
 	_ "github.com/networkservicemesh/sdk/pkg/tools/opentelemetry"
+	_ "github.com/networkservicemesh/sdk/pkg/tools/pprofutils"
 	_ "github.com/sirupsen/logrus"
 	_ "github.com/stretchr/testify/require"
 	_ "go.uber.org/goleak"
