@@ -9,6 +9,8 @@ rules:
   truthy: disable
   # 80 chars should be enough, but don't fail if a line is longer
   line-length: disable
+  comments:
+    min-spaces-from-content: 1
   comments-indentation:
     ignore: .circleci/config.yml
 
