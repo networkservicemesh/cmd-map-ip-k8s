@@ -6,7 +6,7 @@ require (
 	github.com/antonfisher/nested-logrus-formatter v1.3.1
 	github.com/edwarnicke/serialize v1.0.7
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/networkservicemesh/sdk v0.5.1-0.20250623070910-0a56cb0a5411
+	github.com/networkservicemesh/sdk v0.5.1-0.20250624134138-8c5ddd885d6b
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.10.0
 	go.uber.org/goleak v1.3.1-0.20241121203838-4ff5fa6529ee
